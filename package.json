@@ -1,6 +1,6 @@
 {
   "name": "paperbench",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Local-first research paper writing environment for macOS and the web",
   "main": "electron/main.mjs",
   "scripts": {
@@ -76,7 +76,8 @@
         "zip"
       ],
       "hardenedRuntime": true,
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "identity": "-"
     },
     "dmg": {
       "title": "PaperBench ${version}",
