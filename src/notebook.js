@@ -104,6 +104,22 @@ export function createNotebook(mount, { json, onChange, onLink }) {
     },
     append(blocks) { const end = view.state.doc.content.size; const last = view.state.doc.lastChild; const tr = view.state.tr; if (last && last.type === T.paragraph && !last.content.size) tr.replaceWith(end - last.nodeSize, end, blocks); else tr.insert(end, blocks); view.dispatch(tr.scrollIntoView()); },
     appendQuote(text, link) { const kids = [noteSchema.text(text.slice(0, 600))]; const para = T.paragraph.create({ id: uid('nb') }, kids); const src = T.paragraph.create({ id: uid('nb') }, [T.notelink.create(link), noteSchema.text(' ')]); NB.append([T.blockquote.create({ id: uid('nb') }, para), src, T.paragraph.create({ id: uid('nb') })]); },
+    appendSource(sourceId, abstract = '') {
+      const s = S.sources.get(sourceId); if (!s) return false;
+      const lead = T.paragraph.create({ id: uid('nb') }, [
+        T.notelink.create({ kind: 'source', target: s.id, label: shortCite(s) }),
+        noteSchema.text(' — '),
+        noteSchema.text((s.title || 'Untitled source').slice(0, 500), [M.strong.create()]),
+      ]);
+      const blocks = [lead];
+      const abs = String(abstract || s.abstract || '').replace(/\s+/g, ' ').trim();
+      if (abs) {
+        const p = T.paragraph.create({ id: uid('nb') }, noteSchema.text(abs.slice(0, 1400)));
+        blocks.push(T.blockquote.create({ id: uid('nb') }, p));
+      }
+      blocks.push(T.paragraph.create({ id: uid('nb') }));
+      NB.append(blocks); return true;
+    },
     copyLinkToBlock() { const $f = view.state.selection.$from; let d = $f.depth; while (d > 0 && !$f.node(d).attrs?.id) d--; const n = d > 0 ? $f.node(d) : null; if (!n) return null; const label = (n.textContent || 'Block').trim().slice(0, 60); const s = `[[note:${n.attrs.id}|${label}]]`; navigator.clipboard?.writeText(s).catch(() => {}); return s; },
     words() { return (view.state.doc.textBetween(0, view.state.doc.content.size, ' ').match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || []).length; },
     find: { set(q, i) { view.dispatch(view.state.tr.setMeta(findKey, { q, idx: i })); }, get: () => findKey.getState(view.state), step(d) { const s = findKey.getState(view.state); if (!s.matches.length) return; const i = (s.idx + d + s.matches.length) % s.matches.length; view.dispatch(view.state.tr.setMeta(findKey, { q: {}, idx: i })); const m = findKey.getState(view.state).matches[i]; view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, m.from, m.to)).scrollIntoView()); } },
