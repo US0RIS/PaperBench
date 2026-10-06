@@ -18,6 +18,7 @@ import { createNotebook, emptyNotebook } from './notebook.js';
 import { renderDashboard } from './dashboard.js';
 import { schema } from './schema.js';
 import { checkServer } from './research.js';
+import { mountResearchView } from './research-view.js';
 import { ensureClaim, addEvidence } from './review.js';
 import { NodeSelection, TextSelection } from 'prosemirror-state';
 window.__TS = TextSelection;
@@ -27,7 +28,7 @@ const loadUI = () => ({ leftOpen: true, rightOpen: true, leftW: 270, rightW: 360
 S.ui = loadUI(); S.lastCapture = null; if (innerWidth < 1100) { S.ui.leftOpen = false; S.ui.rightOpen = false; }
 const saveUI = () => localStorage.setItem('ui', JSON.stringify({ ...S.ui, focus: false }));
 const flags = () => ({ noteStyle: S.P ? isNoteStyle(S.settings.citationStyle) : false, numberHeadings: S.P ? S.settings.numberHeadings : false, evidenceMode: S.P ? S.settings.evidenceMode : false });
-let E = null, NB = null; S.view = 'dashboard'; S.suggest = false; let projectList = []; const ui = {}; let tabs = [{ id: 'paper', kind: 'paper', title: 'Paper' }], activeTab = 'paper'; const readers = new Map(); let outlineCollapsed = new Set();
+let E = null, NB = null, researchWorkspace = null; S.view = 'dashboard'; S.suggest = false; let projectList = []; const ui = {}; let tabs = [{ id: 'paper', kind: 'paper', title: 'Paper' }], activeTab = 'paper'; const readers = new Map(); let outlineCollapsed = new Set();
 
 // ================= shell =================
 function buildShell() {
@@ -41,7 +42,7 @@ function buildShell() {
   ui.toolbar = h('div.toolbar', { role: 'toolbar', 'aria-label': 'Document tools' }); ui.nbToolbar = h('div.toolbar.nb-toolbar', { role: 'toolbar', 'aria-label': 'Notes tools', hidden: true }); ui.dashEl = h('main.dash-wrap', { hidden: true, 'aria-label': 'Papers' });
   ui.left = h('aside.left', { 'aria-label': 'Outline and library' }); ui.leftBody = h('div.side-body'); ui.leftTabs = h('div.side-tabs');
   ui.left.append(ui.leftTabs, ui.leftBody);
-  ui.center = h('div.center', { role: 'main' }); ui.tabs = h('div.tabs', { role: 'tablist' }); ui.panes = h('div.panes'); ui.center.append(ui.tabs, ui.panes);
+  ui.center = h('div.center', { role: 'main' }); ui.tabs = h('div.tabs', { role: 'tablist' }); ui.panes = h('div.panes'); ui.researchPane = h('div.research-pane', { hidden: true, 'aria-label': 'Research' }); ui.center.append(ui.tabs, ui.panes, ui.researchPane);
   ui.right = h('aside.right', { 'aria-label': 'Research panel' });
   ui.rzL = h('div.resizer', { role: 'separator', 'aria-orientation': 'vertical', 'aria-label': 'Resize left sidebar', 'aria-valuemin': '200', 'aria-valuemax': '480', 'aria-valuenow': String(S.ui.leftW), tabindex: '0' }); ui.rzR = h('div.resizer', { role: 'separator', 'aria-orientation': 'vertical', 'aria-label': 'Resize right panel', 'aria-valuemin': '280', 'aria-valuemax': '640', 'aria-valuenow': String(S.ui.rightW), tabindex: '0' });
   ui.backdrop = h('div.backdrop', { onclick: () => { S.ui.leftOpen = S.ui.rightOpen = false; applyLayout(); } });
@@ -71,6 +72,9 @@ let mobileCur = 'paper';
 function mobileNav(k) { mobileCur = k; if (k === 'paper') { S.ui.leftOpen = S.ui.rightOpen = false; } else if (['outline', 'sources', 'notes'].includes(k)) { S.ui.leftOpen = true; S.ui.rightOpen = false; S.ui.leftTab = k; drawLeft(); } else { S.ui.leftOpen = false; S.ui.rightOpen = true; showPanel('research'); } applyLayout(); }
 function toggle(side) { if (side === 'left') S.ui.leftOpen = !S.ui.leftOpen; else S.ui.rightOpen = !S.ui.rightOpen; if (innerWidth < 1100) { if (side === 'left') S.ui.rightOpen = false; else S.ui.leftOpen = false; } applyLayout(); saveUI(); }
 bus.on('open-right', () => { S.ui.rightOpen = true; if (innerWidth < 1100) S.ui.leftOpen = false; applyLayout(); });
+bus.on('open-research-view', async (query = '') => { S.ui.rightOpen = false; applyLayout(); await setView('research'); researchWorkspace?.setQuery(query, { search: !!String(query || '').trim() }); });
+bus.on('research-add-to-notes', ({ sourceId, abstract } = {}) => { if (!sourceId || !NB?.appendSource(sourceId, abstract)) return; toast('Added to Notes', { action: 'Open notes', onAction: () => setView('notes') }); });
+bus.on('research-open-notes', () => setView('notes'));
 function setFocus(on) { S.ui.focus = on; applyLayout(); if (on) { E?.focus(); announce('Focus mode. Press Escape to exit.'); } }
 
 // ================= left sidebar =================
@@ -105,20 +109,20 @@ function drawOutline() {
 let drawLeftSoon = debounce(() => { if (S.ui.leftTab === 'outline') drawOutline(); }, 200); const drawNbSoon = debounce(() => { if (S.view === 'notes' && S.ui.leftTab === 'outline') drawOutline(); }, 250);
 bus.on('sources', debounce(() => { if (S.ui.leftTab === 'sources') drawLeft(); }, 80)); bus.on('notes', debounce(() => { if (S.ui.leftTab === 'notes') drawLeft(); if (S.ui.leftTab === 'outline') drawOutline(); }, 80)); bus.on('collections', () => { if (S.ui.leftTab === 'sources') drawLeft(); });
 
-// ================= views: dashboard / paper / notes =================
+// ================= views: dashboard / paper / notes / research =================
 function drawViewSw() {
   clear(ui.viewSw); const hidden = S.view === 'dashboard'; ui.viewSw.hidden = hidden;
-  [['paper', 'Paper', 'pencil'], ['notes', 'Notes', 'note']].forEach(([v, l, ic]) => ui.viewSw.append(h('button.vs-b' + (S.view === v ? '.on' : ''), { role: 'tab', 'aria-selected': String(S.view === v), title: l + (v === 'notes' ? ' (' + kbd('Mod-Alt-n') + ')' : ''), onclick: () => setView(v) }, icon(ic, 14), l)));
+  [['paper', 'Paper', 'pencil'], ['notes', 'Notes', 'note'], ['research', 'Research', 'search']].forEach(([v, l, ic]) => ui.viewSw.append(h('button.vs-b' + (S.view === v ? '.on' : ''), { role: 'tab', 'aria-selected': String(S.view === v), title: l + (v === 'notes' ? ' (' + kbd('Mod-Alt-n') + ')' : ''), onclick: () => setView(v) }, icon(ic, 14), l)));
 }
 async function setView(v) {
   if (v === 'dashboard') await flushDoc();
-  S.view = v; document.body.classList.remove('view-dash', 'view-paper', 'view-notes'); document.body.classList.add('view-' + (v === 'dashboard' ? 'dash' : v));
+  S.view = v; document.body.classList.remove('view-dash', 'view-paper', 'view-notes', 'view-research'); document.body.classList.add('view-' + (v === 'dashboard' ? 'dash' : v));
   const dash = v === 'dashboard'; ui.dashEl.hidden = !dash; ui.main.hidden = dash; ui.brand.hidden = !dash; ui.toolbar.hidden = v !== 'paper'; ui.nbToolbar.hidden = v !== 'notes'; ui.mnav.hidden = dash;
-  if (ui.tabs) { ui.tabs.hidden = v !== 'paper' || tabs.length < 2; ui.panes.hidden = v === 'notes'; ui.nbPane.hidden = v !== 'notes'; }
+  if (ui.tabs) { ui.tabs.hidden = v !== 'paper' || tabs.length < 2; ui.panes.hidden = v !== 'paper'; ui.nbPane.hidden = v !== 'notes'; ui.researchPane.hidden = v !== 'research'; }
   drawViewSw(); if (!dash) { drawLeft(); showPanes?.(); }
   if (dash) { $('#btn-left').hidden = true; $('#btn-right').hidden = true; ui.projBtn.hidden = true; ui.save.hidden = true; await showDashboard(); } else { $('#btn-left').hidden = false; $('#btn-right').hidden = false; ui.projBtn.hidden = false; ui.save.hidden = false; }
-  if (v === 'notes') setTimeout(() => NB?.focus(), 30); if (v === 'paper') setTimeout(() => { if (activeTab === 'paper') E?.focus(); }, 30);
-  announce({ dashboard: 'All papers', paper: 'Paper', notes: 'Notes' }[v]);
+  if (v === 'notes') setTimeout(() => NB?.focus(), 30); if (v === 'paper') setTimeout(() => { if (activeTab === 'paper') E?.focus(); }, 30); if (v === 'research') setTimeout(() => researchWorkspace?.focus(), 30);
+  announce({ dashboard: 'All papers', paper: 'Paper', notes: 'Notes', research: 'Research' }[v]);
 }
 async function switchProject(id, view = 'paper') { if (id !== S.id) { await flushDoc(); await openProject(id); await S.mounting; } await setView(view); }
 async function showDashboard() {
@@ -344,7 +348,7 @@ function globalKeys(e) {
   if (!mod) return;
   const done = () => { e.preventDefault(); e.stopPropagation(); };
   if (k === 'k' && !e.shiftKey && !e.altKey) { done(); openPalette(); }
-  else if (k === 'f' && !e.shiftKey && !e.altKey) { done(); if (S.view === 'dashboard') return; S.view === 'notes' ? openNbFind() : openFind(true); }
+  else if (k === 'f' && !e.shiftKey && !e.altKey) { done(); if (S.view === 'dashboard') return; if (S.view === 'notes') openNbFind(); else if (S.view === 'research') researchWorkspace?.focus(); else openFind(true); }
   else if (k === 'e' && e.shiftKey && !e.altKey) { done(); if (S.view === 'paper') setSuggesting(!S.suggest); }
   else if (e.code === 'KeyN' && e.altKey) { done(); if (S.view !== 'dashboard') setView(S.view === 'notes' ? 'paper' : 'notes'); }
   else if (e.code === 'KeyH' && e.altKey) { done(); setView('dashboard'); }
@@ -362,7 +366,7 @@ function globalKeys(e) {
 // ================= project / settings / export dialogs =================
 async function projectMenu() {
   const projects = (await DB.listProjects()).sort((a, b) => b.updatedAt - a.updatedAt);
-  menu(ui.projBtn, [{ label: 'All papers (dashboard)', icon: 'library', kbd: 'Mod-Alt-h', action: () => setView('dashboard') }, { divider: true }, { heading: 'Switch paper' }, ...projects.map((p) => ({ label: p.name || 'Untitled', checked: p.id === S.id, action: () => switchProject(p.id, S.view === 'notes' ? 'notes' : 'paper') })), { divider: true },
+  menu(ui.projBtn, [{ label: 'All papers (dashboard)', icon: 'library', kbd: 'Mod-Alt-h', action: () => setView('dashboard') }, { divider: true }, { heading: 'Switch paper' }, ...projects.map((p) => ({ label: p.name || 'Untitled', checked: p.id === S.id, action: () => switchProject(p.id, ['notes', 'research'].includes(S.view) ? S.view : 'paper') })), { divider: true },
     { label: 'New blank paper', icon: 'plus', action: async () => { const n = await promptDialog('New paper', 'Title', '', { ok: 'Create' }); if (n === undefined) return; await flushDoc(); const id = await createBlank(n.trim() || 'Untitled paper'); await switchProject(id, 'paper'); } },
     { label: 'Add the example paper', icon: 'file', action: async () => { await flushDoc(); const id = await createSample(); await switchProject(id, 'paper'); } }, { divider: true },
     { label: 'Project settings…', icon: 'settings', action: settingsDialog }, { label: 'Import Word or Markdown into this paper…', icon: 'fileUp', action: async () => { const [f] = await fileDialog({ accept: '.docx,.md,.markdown,.txt' }); if (!f) return; try { /\.docx$/i.test(f.name) ? await importDocx(f) : await importMarkdown(f); } catch (e) { toast(e.message, { kind: 'err' }); } } },
@@ -409,8 +413,8 @@ async function mountProject() {
   const sampleOK = (() => { try { return schema.nodeFromJSON(json) && true; } catch (e) { console.error('Stored document invalid', e); return false; } })();
   if (!sampleOK) { const { emptyDoc } = await import('./schema.js'); json = emptyDoc({ title: P.project.settings.title }); toast('The stored draft could not be read; started from a blank page. A recovery copy was kept.', { kind: 'err' }); }
   E = createEditor(ui.mount, { doc: json, flags, hooks, spell: S.settings.spell, onDoc: (changed) => { if (changed) { docChanged(E.getJSON()); refreshDerivedSoon(); } }, onSelection });
-  E.author = 'You'; S.editor = E; E.suggesting = false; S.suggest = false; drawMode(); window.__E = E; installEditorUI(E, api); attachEditorEvents(); buildToolbar(); buildNotes(); drawTabs(); showPanes(); updateProjName(); drawLeft(); refreshProjectList(); drawViewSw();
-  ui.nbPane.hidden = S.view !== 'notes'; ui.panes.hidden = S.view === 'notes';
+  E.author = 'You'; S.editor = E; E.suggesting = false; S.suggest = false; drawMode(); window.__E = E; installEditorUI(E, api); attachEditorEvents(); buildToolbar(); buildNotes(); researchWorkspace?.destroy?.(); researchWorkspace = mountResearchView(ui.researchPane); drawTabs(); showPanes(); updateProjName(); drawLeft(); refreshProjectList(); drawViewSw();
+  ui.nbPane.hidden = S.view !== 'notes'; ui.panes.hidden = S.view !== 'paper'; ui.researchPane.hidden = S.view !== 'research';
   refreshDerived(); renderNotesAndBib(); updateToolbar(E.view.state); updateStatus(); drawSave('saved'); applyLayout();
   if (P.recovered) toast('Recovered unsaved work from this browser.', { timeout: 7000 });
   if (matchMedia('(pointer: fine)').matches) setTimeout(() => { if (E.view.state.doc.child(0).textContent) { /* keep focus out of the title for new readers */ } else E.view.focus(); }, 100);

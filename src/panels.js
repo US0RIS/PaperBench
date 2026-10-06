@@ -59,7 +59,11 @@ async function runSearch() {
 function research(el) {
   const R = panels.resState; const input = h('input.input', { type: 'search', placeholder: 'Search the literature, or paste a DOI, ISBN or URL', 'aria-label': 'Search research', value: R.q, onkeydown: (e) => { if (e.key === 'Enter') { R.q = e.target.value; runSearch(); } }, oninput: (e) => { R.q = e.target.value; } });
   const sel = h('button.btn.sm.ghost', { 'aria-haspopup': 'menu', onclick: () => menu(sel, PROVIDERS.map((p) => ({ label: p.name, sub: p.kinds, checked: R.sel.includes(p.id), action: () => { R.sel = R.sel.includes(p.id) ? R.sel.filter((x) => x !== p.id) : [...R.sel, p.id]; localStorage.setItem('providers', JSON.stringify(R.sel)); draw(); } })), { label: 'Sources to search' }) }, icon('filter', 13), `${R.sel.length} source${R.sel.length === 1 ? '' : 's'}`, icon('down', 12));
-  el.append(h('div.panel-search', input, h('div.row', sel, h('span.grow'), h('button.btn.btn-primary.sm', { onclick: () => { R.q = input.value; runSearch(); } }, 'Search'))));
+  el.append(h('div.panel-search',
+    input,
+    h('div.row', sel, h('span.grow'), h('button.btn.btn-primary.sm', { onclick: () => { R.q = input.value; runSearch(); } }, 'Search')),
+    h('button.btn.sm.ghost.research-open', { onclick: () => bus.emit('open-research-view', input.value.trim()) }, icon('maximize', 13), 'Open full research')
+  ));
   const entries = Object.entries(R.results);
   if (!entries.length) { const rs = S.recents.searches.filter((x) => x.kind === 'research').slice(0, 6); el.append(h('div.pad.muted', 'Results show where each record comes from. Scholarly records can be saved with one click; text is only available when an open-access link exists.'), rs.length ? h('div.pad', h('div.sd-h', 'Recent searches'), rs.map((s) => h('button.link-btn.block', { onclick: () => { R.q = s.label; runSearch(); } }, s.label))) : null); return; }
   entries.forEach(([pid, r]) => {
