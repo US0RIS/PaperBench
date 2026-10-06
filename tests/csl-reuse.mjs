@@ -1,0 +1,10 @@
+import CSL from 'citeproc'; import fs from 'fs';
+const loc = fs.readFileSync('src/csl/locales-en-US.xml','utf8'); const xml = fs.readFileSync('src/csl/apa.csl','utf8');
+const items = { a:{id:'a',type:'book',title:'First title',author:[{family:'Newport',given:'Cal'}],issued:{'date-parts':[[2019]]},publisher:'P'} };
+const e=new CSL.Engine({retrieveLocale:()=>loc,retrieveItem:(id)=>items[id]},xml,'en-US');
+const run=(cl)=>{ const t=Date.now(); const r=e.rebuildProcessorState(cl); const b=e.makeBibliography(); return [Date.now()-t,'ms',JSON.stringify(r.map(x=>x[2])), (b?b[1]:[]).map(x=>x.replace(/<[^>]+>/g,'').trim())]; };
+console.log(run([{citationID:'k0',citationItems:[{id:'a'}],properties:{noteIndex:0}}]));
+items.a.title='Changed title'; items.a.author[0].family='Changed';
+items.b={id:'b',type:'book',title:'Second',author:[{family:'Zed',given:'Z'}],issued:{'date-parts':[[2001]]},publisher:'Q'};
+console.log(run([{citationID:'k0',citationItems:[{id:'a'}],properties:{noteIndex:0}},{citationID:'k1',citationItems:[{id:'b'}],properties:{noteIndex:0}}]));
+console.log(run([{citationID:'k0',citationItems:[{id:'b'}],properties:{noteIndex:0}}]));
