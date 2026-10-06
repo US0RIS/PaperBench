@@ -1,0 +1,87 @@
+{
+  "name": "paperbench",
+  "version": "1.1.0",
+  "description": "Local-first research paper writing environment for macOS and the web",
+  "main": "electron/main.mjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "build:single": "node build.mjs --single",
+    "start": "node server.js",
+    "dev": "node build.mjs --dev && node server.js",
+    "desktop": "npm run build && electron .",
+    "desktop:dev": "npm run build && electron .",
+    "dist:mac": "npm run build && electron-builder --mac dmg zip",
+    "test:backend": "node --test tests/server.test.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@citation-js/core": "^0.9.0",
+    "@citation-js/plugin-bibtex": "^0.9.0",
+    "@citation-js/plugin-ris": "^0.9.0",
+    "@fontsource-variable/instrument-sans": "^5.3.0",
+    "@fontsource-variable/source-serif-4": "^5.3.0",
+    "@mozilla/readability": "^0.6.0",
+    "axe-core": "^4.14.0",
+    "citeproc": "^2.4.63",
+    "diff": "^9.0.0",
+    "docx": "^9.8.1",
+    "esbuild": "^0.28.2",
+    "jszip": "^3.10.2",
+    "katex": "^0.19.0",
+    "lucide": "^1.52.0",
+    "mammoth": "^1.13.0",
+    "marked": "^18.1.0",
+    "pdfjs-dist": "^6.4.299",
+    "prosemirror-commands": "^1.7.2",
+    "prosemirror-dropcursor": "^1.8.4",
+    "prosemirror-gapcursor": "^1.4.1",
+    "prosemirror-history": "^1.5.1",
+    "prosemirror-inputrules": "^1.5.1",
+    "prosemirror-keymap": "^1.2.3",
+    "prosemirror-model": "^1.25.12",
+    "prosemirror-schema-list": "^1.5.1",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-tables": "^1.8.5",
+    "prosemirror-transform": "^1.12.2",
+    "prosemirror-view": "^1.42.6"
+  },
+  "private": true,
+  "type": "module",
+  "productName": "PaperBench",
+  "devDependencies": {
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.paperbench.desktop",
+    "productName": "PaperBench",
+    "asar": true,
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "server.js",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "title": "PaperBench ${version}",
+      "artifactName": "PaperBench-${version}-${arch}.${ext}"
+    },
+    "artifactName": "PaperBench-${version}-${arch}.${ext}"
+  }
+}
