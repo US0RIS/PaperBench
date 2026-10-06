@@ -11,7 +11,12 @@ const norm = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' 
 
 function resultKey(c) {
   const s = c?.src || {};
-  if (s.DOI) return 'doi:' + String(s.DOI).toLowerCase().replace(/^https?:\/\/(?:dx\.)?doi\.org\//, '');
+  if (s.DOI) {
+    const doi = String(s.DOI).toLowerCase().replace(/^https?:\/\/(?:dx\.)?doi\.org\//, '');
+    const axDoi = doi.match(/^10\.48550\/arxiv\.(.+)$/i);
+    if (axDoi) return 'arxiv:' + axDoi[1].replace(/v\d+$/, '').toLowerCase();
+    return 'doi:' + doi;
+  }
   const ax = String(s.URL || '').match(/arxiv\.org\/(?:abs|pdf)\/([^?#/]+?)(?:\.pdf)?$/i);
   if (ax) return 'arxiv:' + ax[1].replace(/v\d+$/, '').toLowerCase();
   return 'title:' + norm(s.title) + ':' + (yearOf(s) || '');
@@ -41,6 +46,7 @@ function combinedResults(states) {
           providers: [pid],
           score: 1 / (rank + 1),
           cites: c.cites ?? null,
+          abstractCandidate: c.provider === 'pubmed' ? c : null,
         });
         return;
       }
@@ -48,6 +54,7 @@ function combinedResults(states) {
       old.score += 1 / (rank + 1);
       old.src = richerSource(old.src, c.src);
       if ((c.abstract || '').length > (old.abstract || '').length) old.abstract = c.abstract;
+      if (!old.abstractCandidate && c.provider === 'pubmed') old.abstractCandidate = c;
       if (!old.oaUrl && c.oaUrl) old.oaUrl = c.oaUrl;
       if (c.cites != null) old.cites = Math.max(old.cites ?? 0, c.cites);
     });
@@ -258,10 +265,10 @@ export function mountResearchView(host) {
     const k = resultKey(c);
     if (expanded.has(k)) { expanded.delete(k); drawResults(); return; }
     expanded.add(k);
-    if (!c.abstract && !c.src.abstract && c.provider === 'pubmed') {
+    if (!c.abstract && !c.src.abstract && c.abstractCandidate) {
       drawResults();
       try {
-        c.abstract = await loadAbstract(c, { signal: ctl?.signal });
+        c.abstract = await loadAbstract(c.abstractCandidate, { signal: ctl?.signal });
         if (c.abstract) c.src.abstract = c.abstract;
       } catch { /* leave the metadata-only message */ }
     }
@@ -291,7 +298,7 @@ export function mountResearchView(host) {
   }
 
   const onSources = () => { if (q) drawResults(); };
-  bus.on('sources', onSources);
+  const offSources = bus.on('sources', onSources);
 
   return {
     focus() { input.focus(); input.select(); },
@@ -302,6 +309,6 @@ export function mountResearchView(host) {
       else input.focus();
     },
     search: runSearch,
-    destroy() { ctl?.abort(); },
+    destroy() { ctl?.abort(); offSources(); },
   };
 }
