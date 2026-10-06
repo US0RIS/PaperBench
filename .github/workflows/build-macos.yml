@@ -38,6 +38,8 @@ jobs:
         run: npm run build
 
       - name: Package macOS app
+        env:
+          CSC_FOR_PULL_REQUEST: "true"
         run: npx electron-builder --mac dmg zip --${{ matrix.arch }} --publish never
 
       - name: Verify app signature
