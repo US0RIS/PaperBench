@@ -161,7 +161,7 @@ export function mountResearchView(host) {
     input.value = q;
     if (!q) { drawEmpty(); input.focus(); return; }
     ctl?.abort();
-    ctl = new AbortController();
+    const runCtl = ctl = new AbortController();
     pushRecent('searches', { id: 'q:' + q, label: q, kind: 'research' });
     states = {};
     selected.forEach((id) => { states[id] = { status: 'loading', items: [] }; });
@@ -171,13 +171,13 @@ export function mountResearchView(host) {
     selected.forEach((id) => {
       const p = providerById(id);
       if (!p) return;
-      p.search(q, { signal: ctl.signal }, (S.settings.language || 'en').slice(0, 2))
+      p.search(q, { signal: runCtl.signal }, (S.settings.language || 'en').slice(0, 2))
         .then((items) => { states[id] = { status: 'ok', items }; })
         .catch((e) => {
-          if (ctl?.signal.aborted) return;
+          if (runCtl.signal.aborted) return;
           states[id] = { status: 'error', items: [], error: e.message };
         })
-        .finally(() => { if (!ctl?.signal.aborted) drawResults(); });
+        .finally(() => { if (!runCtl.signal.aborted && ctl === runCtl) drawResults(); });
     });
   }
 
