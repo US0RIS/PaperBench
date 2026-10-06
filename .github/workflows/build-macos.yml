@@ -38,9 +38,17 @@ jobs:
         run: npm run build
 
       - name: Package macOS app
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npx electron-builder --mac dmg zip --${{ matrix.arch }} --publish never
+
+      - name: Verify app signature
+        shell: bash
+        run: |
+          APP="$(find release -type d -name 'PaperBench.app' -print -quit)"
+          test -n "$APP"
+          echo "Verifying $APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv --verbose=4 "$APP" 2>&1 | tee /tmp/codesign.txt
+          grep -q "Signature=adhoc" /tmp/codesign.txt
 
       - uses: actions/upload-artifact@v4
         with:
